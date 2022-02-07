@@ -1,0 +1,8 @@
+{
+    "fov" : 95.0,
+    "plugin_paths" : [
+         "plugins/foward_arrow.js",
+         "plugins/gamepad.js",
+         "plugins/jetusv/jetusv_control.js"
+    ]
+}
