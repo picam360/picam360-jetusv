@@ -1,2 +1,2 @@
-# picam360-usv
-A USV
+# picam360-jetusv
+A USV featured by jetson
