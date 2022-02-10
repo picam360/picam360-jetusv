@@ -1,0 +1,22 @@
+{
+  "name": "node-usvd",
+  "version": "0.1.16",
+  "description": "usvc NodeJS binding.",
+  "main": "index.js",
+  "author": "Takuma Hirayama <hirayama.takuma@picam360.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/picam360/node-usvd.git"
+  },
+  "dependencies": {
+    "bindings": "~1.2.1",
+    "run-script-os": "*"
+  },
+  "scripts": {
+    "install": "run-script-os",
+    "install:win32": "npx cmake-js compile -G \"Visual Studio 15 2017 Win64\"",
+    "install:darwin:linux": "npx cmake-js compile -G \"Unix Makefiles\"",
+    "view-test": "node view-test.js"
+  }
+}
