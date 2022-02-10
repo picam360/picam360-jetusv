@@ -43,6 +43,16 @@ var create_plugin = (function() {
 		}
 		return result;
 	}
+	function addMenuButton(name, txt) {
+			return new Promise((resolve, reject) => {
+			var onsListItem = document.createElement("ons-list-item");
+			onsListItem.id = name;
+			onsListItem.innerHTML = txt;
+			menu_list.insertBefore(onsListItem, menu_list_about);
+			ons.compile(onsListItem);
+			resolve();
+		});
+	}
 	function map_load() {
 		m_container.style.display = "block";
 		m_overlay = new ol.Overlay({
@@ -92,7 +102,7 @@ var create_plugin = (function() {
 		console.log(plugin.name + "::init()");
 
 		var script = document.createElement('script');
-		script.src = "https://openlayers.org/en/v5.1.3/build/ol.js";
+		script.src = "http://localhost/openlayers-v5.1.3/ol.js";
 		script.onload = function() {
 			m_plugin_host
 				.getFile("plugins/map/map.html", function(chunk_array) {
@@ -118,11 +128,6 @@ var create_plugin = (function() {
 						}
 					});
 				});
-			m_plugin_host.getFile("plugins/map/map_list_item.html", function(
-				chunk_array) {
-				m_menu_txt = decodeUtf8(chunk_array[0]);
-				m_plugin_host.restore_app_menu();
-			});
 			m_plugin_host.getFile("plugins/map/popup.html", function(
 				chunk_array) {
 				var txt = decodeUtf8(chunk_array[0]);
@@ -166,9 +171,12 @@ var create_plugin = (function() {
 				m_post_map_unloaded = callback;
 			},
 			on_restore_app_menu : function(callback) {
-				var node = $.parseHTML(m_menu_txt);
-				$("#menu_list").append(node[0]);
-				ons.compile(node[0]);
+				addMenuButton("swMap", "Map").then(() => {
+					swMap.onclick = (evt) => {
+						app.navi.pushPage('map.html');
+						app.menu.closeMenu();
+					};
+				});
 			},
 			popup : function(coordinate, msg, callback) {
 				m_content.innerHTML = msg;

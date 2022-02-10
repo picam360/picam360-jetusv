@@ -36,8 +36,8 @@ module.exports = {
 		var history_10000min = {};// around 6days
 
 		// downstream status
-		var waypoints_required = false;
-		var history_required = false;
+		var m_waypoints_required = false;
+		var m_history_required = false;
 
 		// propo
 		var m_ch_us = [];
@@ -70,7 +70,6 @@ module.exports = {
 			PWM_MARGIN_MS : 100,
 			ch : [{},{},{},{}],
 		};
-		var m_status = {};
 
 		// aws_iot
 		var clientTokenUpdate;
@@ -154,6 +153,34 @@ module.exports = {
 			} else {
 				return get_ads7828_value_differential(ch - 8, cnt);
 			}
+		}
+
+		function get_status(){
+			var status = {
+				gps : gps_valid,
+				lat : toFixedFloat(m_latitude, 6),
+				lon : toFixedFloat(m_longitude, 6),
+				spd : toFixedFloat(m_speed_kmph, 3),
+				heading : toFixedFloat(-m_north, 3), // heading_from_north_clockwise
+				bat : toFixedFloat(m_battery, 3),
+				bamp : toFixedFloat(m_battery_amp, 3),
+				samp : toFixedFloat(m_solar_amp, 3),
+				adc : m_adc_values,
+				next_waypoint_idx : options.next_waypoint_idx,
+				next_waypoint_distance : m_next_waypoint_distance,
+				rudder : toFixedFloat(m_rudder, 0),
+				thruster : toFixedFloat(m_thruster, 0),
+				operation_mode : options.operation_mode,
+				gain_kp : options.gain_kp,
+				gain_kv : options.gain_kv,
+				low_gain_kp : options.low_gain_kp,
+				low_gain_kv : options.low_gain_kv,
+				low_gain_deg : options.low_gain_deg,
+				home : options.home,
+				operator_pos : m_operator_pos,
+			};
+
+			return status;
 		}
 
 		async
@@ -339,26 +366,26 @@ module.exports = {
 								}
 							}
 						} else if (options.thruster_mode == 'SINGLE') {
-							var ch0_us = get_pwm_us(m_rudder, options.ch[0]);
-							var ch1_us = get_pwm_us(m_thruster, options.ch[1]);
-							var ch2_us = options.PWM_MIDDLE_US;
-							var ch3_us = options.PWM_MIDDLE_US;
-							var fd = fs.openSync("/dev/pi-blaster", 'w');
-							set_thruster_pwm(0, ch0_us, fd);
-							set_thruster_pwm(1, ch1_us, fd);
-							set_thruster_pwm(2, ch2_us, fd);
-							set_thruster_pwm(3, ch3_us, fd);
-							fs.closeSync(fd);
-							if (options.single_debug) {
-								console.log("single : " + ch0_us + " us, "
-									+ ch1_us + " us, " + ch2_us + " us, "
-									+ ch3_us + " us;");
-							}
+							// var ch0_us = get_pwm_us(m_rudder, options.ch[0]);
+							// var ch1_us = get_pwm_us(m_thruster, options.ch[1]);
+							// var ch2_us = options.PWM_MIDDLE_US;
+							// var ch3_us = options.PWM_MIDDLE_US;
+							// var fd = fs.openSync("/dev/pi-blaster", 'w');
+							// set_thruster_pwm(0, ch0_us, fd);
+							// set_thruster_pwm(1, ch1_us, fd);
+							// set_thruster_pwm(2, ch2_us, fd);
+							// set_thruster_pwm(3, ch3_us, fd);
+							// fs.closeSync(fd);
+							// if (options.single_debug) {
+							// 	console.log("single : " + ch0_us + " us, "
+							// 		+ ch1_us + " us, " + ch2_us + " us, "
+							// 		+ ch3_us + " us;");
+							// }
 						} else {
-							set_thruster_pwm(0, options.PWM_MIDDLE_US, fd);
-							set_thruster_pwm(1, options.PWM_MIDDLE_US, fd);
-							set_thruster_pwm(2, options.PWM_MIDDLE_US, fd);
-							set_thruster_pwm(3, options.PWM_MIDDLE_US, fd);
+							// set_thruster_pwm(0, options.PWM_MIDDLE_US, fd);
+							// set_thruster_pwm(1, options.PWM_MIDDLE_US, fd);
+							// set_thruster_pwm(2, options.PWM_MIDDLE_US, fd);
+							// set_thruster_pwm(3, options.PWM_MIDDLE_US, fd);
 						}
 					}, 200);
 					callback(null);
@@ -418,50 +445,6 @@ module.exports = {
 					// listener.disconnect(function() {
 					// console.log('Disconnected');
 					// });
-					callback(null);
-				},
-				function(callback) {
-					plugin_host
-						.add_status(PLUGIN_NAME + ".status", function() {
-							// update status
-							m_status = {
-								gps : gps_valid,
-								lat : toFixedFloat(m_latitude, 6),
-								lon : toFixedFloat(m_longitude, 6),
-								spd : toFixedFloat(m_speed_kmph, 3),
-								heading : toFixedFloat(-m_north, 3), // heading_from_north_clockwise
-								bat : toFixedFloat(m_battery, 3),
-								bamp : toFixedFloat(m_battery_amp, 3),
-								samp : toFixedFloat(m_solar_amp, 3),
-								adc : m_adc_values,
-								next_waypoint_idx : options.next_waypoint_idx,
-								next_waypoint_distance : m_next_waypoint_distance,
-								rudder : toFixedFloat(m_rudder, 0),
-								thruster : toFixedFloat(m_thruster, 0),
-								operation_mode : options.operation_mode,
-								gain_kp : options.gain_kp,
-								gain_kv : options.gain_kv,
-								low_gain_kp : options.low_gain_kp,
-								low_gain_kv : options.low_gain_kv,
-								low_gain_deg : options.low_gain_deg,
-								home : options.home,
-								operator_pos : m_operator_pos,
-							};
-							var status = Object.assign({}, m_status);
-							if (waypoints_required) {
-								status.waypoints = options.waypoints;
-								waypoints_required = false
-							}
-							if (history_required) {
-								status.history = Object
-									.assign({}, history_1min, history_10min, history_100min, history_1000min, history_10000min);
-								history_required = false
-							}
-							return {
-								succeeded : true,
-								value : JSON.stringify(status)
-							};
-						});
 					callback(null);
 				},
 				function(callback) {
@@ -570,8 +553,10 @@ module.exports = {
 												"lon" : m_longitude,
 												"value" : value,
 											};
-											plugin
-												.aws_iot_publish(plugin.aws_thing_shadow, plugin.aws_client_id, params.topic, state);
+											if(plugin.aws_thing_shadow){
+												plugin
+													.aws_iot_publish(plugin.aws_thing_shadow, plugin.aws_client_id, params.topic, state);
+											}
 											return true;
 										}
 										var funcs = {
@@ -631,8 +616,32 @@ module.exports = {
 			name : PLUGIN_NAME,
 			aws_thing_shadow : null,
 			aws_client_id : null,
+			pst_params : {},
 			init_options : function(_options) {
 				options = Object.assign(options, _options.usvc);
+			},
+			pst_started : function(pstcore, pst) {
+				this.pst_params[pst] = {};
+				this.pst_params[pst].timer = setInterval(function() {
+					var status = get_status();
+					if (m_waypoints_required) {
+						status.waypoints = options.waypoints;
+						m_waypoints_required = false
+					}
+					if (m_history_required) {
+						status.history = Object
+							.assign({}, history_1min, history_10min, history_100min, history_1000min, history_10000min);
+						m_history_required = false
+					}
+					pstcore.pstcore_set_param(pst, "jetusv", "status", Buffer.from(JSON.stringify(status)).toString('base64'));
+				});
+				pstcore.pstcore_add_set_param_done_callback(pst, (msg)=>{
+					//console.log(msg);
+				});
+			},
+			pst_stopped : function(pstcore, pst) {
+				clearInterval(this.pst_params[pst].timer);
+				delete this.pst_params[pst];
 			},
 			command_handler : function(cmd) {
 				var split = cmd.split(' ');
@@ -642,10 +651,12 @@ module.exports = {
 						var new_waypoints = JSON.parse(json_str);
 						console.log(new_waypoints);
 						options.waypoints = new_waypoints;
-						plugin
-							.aws_iot_update(plugin.aws_thing_shadow, plugin.aws_client_id, {
-								waypoints : options.waypoints
-							});
+						if(plugin.aws_thing_shadow){
+							plugin
+								.aws_iot_update(plugin.aws_thing_shadow, plugin.aws_client_id, {
+									waypoints : options.waypoints
+								});
+						}
 						break;
 					case "set_next_waypoint_idx" :
 						var v = parseInt(split[1]);
@@ -703,10 +714,10 @@ module.exports = {
 						}
 						break;
 					case "get_waypoints" :
-						waypoints_required = true;
+						m_waypoints_required = true;
 						break;
 					case "get_history" :
-						history_required = true;
+						m_history_required = true;
 						break;
 				}
 			},
@@ -838,7 +849,7 @@ module.exports = {
 					.aws_iot_get(thing_shadow, client_id, function() {
 						// start sync
 						setInterval(function() {
-							var state = Object.assign({}, m_status);
+							var status = get_status();
 							// update history
 							// care shadow size limited 8k
 							var history_tbl = [history_1min, history_10min,

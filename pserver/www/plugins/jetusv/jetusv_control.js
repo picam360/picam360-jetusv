@@ -401,20 +401,6 @@ var create_plugin = (function() {
 			}
 		}
 
-		m_plugin_host.add_watch(SERVICE_DOMAIN + "status", function(ret) {
-			m_status = JSON.parse(ret);
-			m_status.timestamp = parseInt(Date.now() / 1000);
-			if (m_status.waypoints && m_get_waypoints_callback) {
-				m_waypoints = m_status.waypoints;
-				m_get_waypoints_callback(m_waypoints);
-			}
-			if (m_status.history && m_get_history_callback) {
-				m_history = m_status.history;
-				m_get_history_callback(m_history);
-			}
-			refresh_button();
-		});
-
 		function get_bat_per(bat) {
 			var bat_min_v = options["bat_min_v"] || 9.6;
 			var bat_max_v = options["bat_max_v"] || 12.6;
@@ -726,7 +712,7 @@ var create_plugin = (function() {
 					var node = {
 						lat : pos.lat,
 						lon : pos.lon,
-						tol : options.act_presets["default_tol"] || 30
+						tol : options["default_tol"] || 30
 					};
 					if (options.act_presets["default"]) {
 						node.act = options.act_presets["default"];
@@ -1169,20 +1155,36 @@ var create_plugin = (function() {
 			refresh_button();
 		});// set_post_map_unloaded
 		m_plugin_host
-			.getFile("plugins/usv/wp_menu.html", function(chunk_array) {
+			.getFile("plugins/jetusv/wp_menu.html", function(chunk_array) {
 				var txt = decodeUtf8(chunk_array[0])
 					.replace(/%PLUGIN_NAME%/g, PLUGIN_NAME);
 				var node = $.parseHTML(txt);
 				$('body').append(node);
 				ons.compile(node[0]);
 			});
-		m_plugin_host.getFile("plugins/usv/edit_waypoint.html", function(
+		m_plugin_host.getFile("plugins/jetusv/edit_waypoint.html", function(
 			chunk_array) {
 			var txt = decodeUtf8(chunk_array[0]);
 			var node = $.parseHTML(txt);
 			$('body').append(node);
 			ons.compile(node[0]);
 		});
+		window.jetusv_on_set_param_done_callback = (msg) => {
+			if(msg.startsWith('["jetusv",')){
+				var params = JSON.parse(msg);
+				m_status = JSON.parse(atob(params[2]));
+				m_status.timestamp = parseInt(Date.now() / 1000);
+				if (m_status.waypoints && m_get_waypoints_callback) {
+					m_waypoints = m_status.waypoints;
+					m_get_waypoints_callback(m_waypoints);
+				}
+				if (m_status.history && m_get_history_callback) {
+					m_history = m_status.history;
+					m_get_history_callback(m_history);
+				}
+				refresh_button();
+			}
+		};
 	}// init
 	return function(plugin_host) {
 		m_plugin_host = plugin_host;
@@ -1194,11 +1196,32 @@ var create_plugin = (function() {
 		var stereo_enabled = false;
 		var plugin = {
 			name : PLUGIN_NAME,
+			pst_params : {},
 			init_options : function(options) {
 				if (!m_is_init) {
 					m_is_init = true;
-					init(plugin, options);
+					var jetusv_options = options.jetusv;
+					if(!jetusv_options){
+						jetusv_options = {
+							bat_min_v : 9.6,
+							bat_max_v : 12.7,
+							default_tol : 30,
+							act_presets : {
+								default : {
+								},
+							},
+						};
+					}
+					init(plugin, jetusv_options);
 				}
+			},
+			pst_started : function(pstcore, pst) {
+				this.pst_params[pst] = {};
+				pstcore.pstcore_add_set_param_done_callback(pst, "jetusv_on_set_param_done_callback");
+			},
+			pst_stopped : function(pstcore, pst) {
+				delete this.pst_params[pst];
+				pstcore.pstcore_remove_set_param_done_callback(conn.attr.pst, "connect_on_set_param_done_callback");
 			},
 			command_handler : function(cmd) {
 			},
