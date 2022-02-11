@@ -9,7 +9,7 @@ module.exports = {
 		var child_process = require('child_process');
 		var i2c_buf = require("i2c-bus");
 		var Pca9685Driver = require("pca9685").Pca9685Driver;
-		var Ads1x15 = require('node-ads1x15');  
+		var Ads1x15 = require('node-ads1x15');
 
 		var PLUGIN_NAME = "usvc";
 		var DELIMITER = '\r\n';
@@ -121,16 +121,32 @@ module.exports = {
 				//9axis sensor handler
 				console.log("init 9axis handler");
 
-				var def = "dummy s=2x2 fps=10 ! icm20948";
+				var def = "dummy s=2x2 fps=10 ! icm20948 mode=yaw";
 				var pst = plugin_host.pstcore.pstcore_build_pstreamer(def);
 
                 var meta = "<meta maptype=\"DUMMY\" deg_offset=\"-90,0,0\" />";
 				plugin_host.pstcore.pstcore_set_param(pst, "dummy", "meta", meta);
+
+				var buff = [];
 				plugin_host.pstcore.pstcore_set_dequeue_callback(pst, (data)=>{
 					if(data == null){//eob
+						var split = buff[1].toString().split(' ');
+						for (var i = 0; i < split.length; i++) {
+							var separator = (/[=,\"]/);
+							var _split = split[i].split(separator);
+							if (_split[0] == "vehicle_quat") {
+								var quat = [parseFloat(_split[2]),
+									parseFloat(_split[3]),
+									parseFloat(_split[4]),
+									parseFloat(_split[5])
+								];
+								console.log("dequeue " + quat);
+							}
+						}
+						buff = [];
 						return;
 					}
-					console.log("dequeue " + data.length);
+					buff.push(data);
 				});
 				plugin_host.pstcore.pstcore_start_pstreamer(pst);
 
@@ -154,16 +170,6 @@ module.exports = {
 					}
 					console.log("Initialization done");
 
-					// // Set channel 0 to turn on on step 42 and off on step 255
-					// // (with optional callback)
-					// pwm.setPulseRange(0, 42, 255, function() {
-					// 	if (err) {
-					// 		console.error("Error setting pulse range.");
-					// 	} else {
-					// 		console.log("Pulse range set.");
-					// 	}
-					// });
-
 					for(var idx in options.SKREW_PINS){
 						pwm.setPulseLength(options.SKREW_PINS[idx], 1500);
 					}
@@ -181,116 +187,6 @@ module.exports = {
 					callback(null);
 				});
 				//thruster handler
-			},
-			function (callback) {
-				//gps handler
-				var listener = new gpsd.Listener({
-					port: 2947,
-					hostname: 'localhost',
-					logger: {
-						info: function () {
-						},
-						warn: console.warn,
-						error: console.error
-					},
-					parse: true
-				});
-				listener.connect(function () {
-					console.log('GPSD Connected');
-					listener.on('TPV', function (tpvData) {
-						if (options.gps_debug) {
-							if (options.gps_test) {
-								tpvData = options.gps_test;
-							}
-							console.log(tpvData);
-						}
-						if (tpvData.lat && tpvData.lon) {
-							// speed
-							var earth_r_km = 6356.752;
-							var equator_r_km = 6378.137;
-							var lat_deg2m = earth_r_km * Math.PI / 180
-								* 1000;
-							var lon_deg2m = equator_r_km
-								* Math.cos(m_latitude * Math.PI / 180)
-								* Math.PI / 180 * 1000;
-							var d_lat_deg = tpvData.lat - m_latitude;
-							var d_lon_deg = tpvData.lon - m_longitude;
-							var d_lat_m = d_lat_deg * lat_deg2m;
-							var d_lon_m = d_lon_deg * lon_deg2m;
-							var speed_kmph = Math.sqrt(d_lat_m * d_lat_m
-								+ d_lon_m * d_lon_m) / 1000 * 3600;
-							if (m_gps_valid && speed_kmph < 100) {
-								var lpf_gain = 0.2;
-								m_speed_kmph = speed_kmph * lpf_gain
-									+ m_speed_kmph * (1.0 - lpf_gain);
-							}
-
-							// update
-							m_latitude = tpvData.lat;
-							m_longitude = tpvData.lon;
-							m_gps_valid = true;
-						} else { // GPS_LOST
-							m_gps_valid = false;
-						}
-					});
-					listener.watch();
-				});
-				// listener.disconnect(function() {
-				// console.log('Disconnected');
-				// });
-				callback(null);
-				//gps handler
-			},
-			function (callback) {
-				//history handler
-				setInterval(function () {
-					var state = get_status();
-					// update history
-					// care shadow size limited 8k
-					var history_tbl = options.history;
-					var max_count_tbl = [5, 5, 5, 5, 5];// max25nodes30days
-					var interval_s_tbl = [60, 60 * 10, 60 * 100,
-						60 * 1000, 60 * 10000];
-					var new_key = parseInt(Date.now() / 1000);
-					var new_value;
-					if (!m_gps_valid) { // GPS_LOST
-						new_value = {
-							"gps": false,
-							"bat": state.bat,
-						};
-					} else {
-						new_value = {
-							"lat": state.lat,
-							"lon": state.lon,
-							"bat": state.bat,
-						};
-					}
-					for (var i = 0; i < history_tbl.length - 1; i++) {
-						var keys = Object.keys(history_tbl[i]);
-						for (var j = 0; j < keys.length
-							- max_count_tbl[i]; j++) {
-							delete history_tbl[i][keys[j]];
-						}
-					}
-					for (var i = 0; i < history_tbl.length - 1; i++) {
-						var keys = Object.keys(history_tbl[i]);
-						if (new_key - (keys[keys.length - 1] || 0) > interval_s_tbl[i]) {
-							history_tbl[i][new_key] = new_value;
-						} else {
-							break;
-						}
-						if (keys.length + 1 > max_count_tbl[i]) {
-							new_key = keys[0];
-							new_value = history_tbl[i][new_key];
-							delete history_tbl[i][new_key];
-						} else {
-							break;
-						}
-					}
-					plugin.save_json("history.json", history_tbl);
-				}, 60 * 1000);
-				callback(null);
-				//history handler
 			},
 			function (callback) {
 				//adc handler
@@ -432,6 +328,116 @@ module.exports = {
 				});
 				callback(null);
 				//adc handler
+			},
+			function (callback) {
+				//gps handler
+				var listener = new gpsd.Listener({
+					port: 2947,
+					hostname: 'localhost',
+					logger: {
+						info: function () {
+						},
+						warn: console.warn,
+						error: console.error
+					},
+					parse: true
+				});
+				listener.connect(function () {
+					console.log('GPSD Connected');
+					listener.on('TPV', function (tpvData) {
+						if (options.gps_debug) {
+							if (options.gps_test) {
+								tpvData = options.gps_test;
+							}
+							console.log(tpvData);
+						}
+						if (tpvData.lat && tpvData.lon) {
+							// speed
+							var earth_r_km = 6356.752;
+							var equator_r_km = 6378.137;
+							var lat_deg2m = earth_r_km * Math.PI / 180
+								* 1000;
+							var lon_deg2m = equator_r_km
+								* Math.cos(m_latitude * Math.PI / 180)
+								* Math.PI / 180 * 1000;
+							var d_lat_deg = tpvData.lat - m_latitude;
+							var d_lon_deg = tpvData.lon - m_longitude;
+							var d_lat_m = d_lat_deg * lat_deg2m;
+							var d_lon_m = d_lon_deg * lon_deg2m;
+							var speed_kmph = Math.sqrt(d_lat_m * d_lat_m
+								+ d_lon_m * d_lon_m) / 1000 * 3600;
+							if (m_gps_valid && speed_kmph < 100) {
+								var lpf_gain = 0.2;
+								m_speed_kmph = speed_kmph * lpf_gain
+									+ m_speed_kmph * (1.0 - lpf_gain);
+							}
+
+							// update
+							m_latitude = tpvData.lat;
+							m_longitude = tpvData.lon;
+							m_gps_valid = true;
+						} else { // GPS_LOST
+							m_gps_valid = false;
+						}
+					});
+					listener.watch();
+				});
+				// listener.disconnect(function() {
+				// console.log('Disconnected');
+				// });
+				callback(null);
+				//gps handler
+			},
+			function (callback) {
+				//history handler
+				setInterval(function () {
+					var state = get_status();
+					// update history
+					// care shadow size limited 8k
+					var history_tbl = options.history;
+					var max_count_tbl = [5, 5, 5, 5, 5];// max25nodes30days
+					var interval_s_tbl = [60, 60 * 10, 60 * 100,
+						60 * 1000, 60 * 10000];
+					var new_key = parseInt(Date.now() / 1000);
+					var new_value;
+					if (!m_gps_valid) { // GPS_LOST
+						new_value = {
+							"gps": false,
+							"bat": state.bat,
+						};
+					} else {
+						new_value = {
+							"lat": state.lat,
+							"lon": state.lon,
+							"bat": state.bat,
+						};
+					}
+					for (var i = 0; i < history_tbl.length - 1; i++) {
+						var keys = Object.keys(history_tbl[i]);
+						for (var j = 0; j < keys.length
+							- max_count_tbl[i]; j++) {
+							delete history_tbl[i][keys[j]];
+						}
+					}
+					for (var i = 0; i < history_tbl.length - 1; i++) {
+						var keys = Object.keys(history_tbl[i]);
+						if (new_key - (keys[keys.length - 1] || 0) > interval_s_tbl[i]) {
+							history_tbl[i][new_key] = new_value;
+						} else {
+							break;
+						}
+						if (keys.length + 1 > max_count_tbl[i]) {
+							new_key = keys[0];
+							new_value = history_tbl[i][new_key];
+							delete history_tbl[i][new_key];
+						} else {
+							break;
+						}
+					}
+					plugin.save_json("history.json", history_tbl);
+				}, 60 * 1000);
+				callback(null);
+				//history handler
 			},
 			function (callback) {
 				// auto operation
