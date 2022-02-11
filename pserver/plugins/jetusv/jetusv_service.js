@@ -29,12 +29,6 @@ module.exports = {
 		var m_battery_amp = 0;
 		var m_solar_amp = 0;
 
-		var history_1min = {};
-		var history_10min = {};
-		var history_100min = {};
-		var history_1000min = {};
-		var history_10000min = {};// around 6days
-
 		// downstream status
 		var m_waypoints_required = false;
 		var m_history_required = false;
@@ -57,6 +51,13 @@ module.exports = {
 			propo_enabled : false,
 			operation_mode : "STANBY",
 			waypoints : [],
+			history : {
+				history_10000min : [],// around 6days
+				history_1000min : [],
+				history_100min : [],
+				history_10min : [],
+				history_1min : [],
+			},
 			next_waypoint_idx : 0,
 			gain_kp : 160,
 			gain_kv : 40,
@@ -618,7 +619,32 @@ module.exports = {
 			aws_client_id : null,
 			pst_params : {},
 			init_options : function(_options) {
-				options = Object.assign(options, _options.usvc);
+				options = Object.assign(options, _options.jetusv);
+				options.waypoints = this.load_json("waypoints.json", []);
+				options.history = this.load_json("history.json", {
+					history_10000min : [],
+					history_1000min : [],
+					history_100min : [],
+					history_10min : [],
+					history_1min : [],
+				});
+			},
+			load_json(filepath, dvalue){
+				if (!fs.existsSync(filepath)) {
+					return dvalue;
+				}
+				var lines = fs.readFileSync(filepath, 'utf-8').replace(/\r/g, '').split('\n')
+				for(var i=0;i<lines.length;i++){
+					if(lines[i][0] == '#'){
+						lines[i] = "";
+					}
+				}
+				var json_str = lines.join("\n");
+				return JSON.parse(json_str);
+			},
+			save_json(filepath, value){
+				var json_str = JSON.stringify(value);
+				fs.writeFileSync(filepath, json_str);
 			},
 			pst_started : function(pstcore, pst) {
 				this.pst_params[pst] = {};
@@ -630,7 +656,7 @@ module.exports = {
 					}
 					if (m_history_required) {
 						status.history = Object
-							.assign({}, history_1min, history_10min, history_100min, history_1000min, history_10000min);
+							.assign({}, options.history);
 						m_history_required = false
 					}
 					pstcore.pstcore_set_param(pst, "jetusv", "status", Buffer.from(JSON.stringify(status)).toString('base64'));
@@ -651,6 +677,7 @@ module.exports = {
 						var new_waypoints = JSON.parse(json_str);
 						console.log(new_waypoints);
 						options.waypoints = new_waypoints;
+						plugin.save_json("waypoints.json", options.waypoints);
 						if(plugin.aws_thing_shadow){
 							plugin
 								.aws_iot_update(plugin.aws_thing_shadow, plugin.aws_client_id, {
@@ -806,19 +833,19 @@ module.exports = {
 								reported_fnc(state, false);
 
 								if (state.history_1min) {
-									history_1min = state.history_1min;
+									options.history.history_1min = state.history_1min;
 								}
 								if (state.history_10min) {
-									history_10min = state.history_10min;
+									options.history.history_10min = state.history_10min;
 								}
 								if (state.history_100min) {
-									history_100min = state.history_100min;
+									options.history.history_100min = state.history_100min;
 								}
 								if (state.history_1000min) {
-									history_1000min = state.history_1000min;
+									options.history.history_1000min = state.history_1000min;
 								}
 								if (state.history_10000min) {
-									history_10000min = state.history_10000min;
+									options.history.history_10000min = state.history_10000min;
 								}
 							}
 							if (stateObject.state.delta) {
@@ -852,9 +879,7 @@ module.exports = {
 							var status = get_status();
 							// update history
 							// care shadow size limited 8k
-							var history_tbl = [history_1min, history_10min,
-								history_100min, history_1000min,
-								history_10000min];
+							var history_tbl = options.history;
 							var report_tbl = [{}, {}, {}, {}, {}];
 							var max_count_tbl = [5, 5, 5, 5, 5];// max25nodes30days
 							var interval_s_tbl = [60, 60 * 10, 60 * 100,

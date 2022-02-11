@@ -1221,7 +1221,7 @@ var create_plugin = (function() {
 			},
 			pst_stopped : function(pstcore, pst) {
 				delete this.pst_params[pst];
-				pstcore.pstcore_remove_set_param_done_callback(conn.attr.pst, "connect_on_set_param_done_callback");
+				pstcore.pstcore_remove_set_param_done_callback(pst, "connect_on_set_param_done_callback");
 			},
 			command_handler : function(cmd) {
 			},
