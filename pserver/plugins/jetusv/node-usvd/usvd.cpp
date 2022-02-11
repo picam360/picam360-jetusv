@@ -37,8 +37,8 @@ static float lg_motor_margin = 25;
 static float lg_motor_range = 100;
 #define MOTOR_BASE(value) lg_motor_center + lg_motor_margin * ((value < 0.5 && value > -0.5) ? 0 : (value > 0) ? 1 : -1)
 
-static int lg_light_id[LIGHT_NUM] = { 4, 34 };
-static int lg_motor_id[MOTOR_NUM] = { 17, 18, 27, 24 };
+static int lg_light_id[LIGHT_NUM] = { 4, 5 };
+static int lg_motor_id[MOTOR_NUM] = { 0, 1, 2, 3 };
 
 static float lg_light_value[LIGHT_NUM] = { 0, 0 };
 static float lg_motor_value[MOTOR_NUM] = { 0, 0, 0, 0 };
@@ -49,7 +49,7 @@ static float lg_thrust = 0; //-100 to 100
 static float lg_rudder = 0; //-100 to 100
 static float lg_target_heading = 0; //-180 to 180
 static float lg_max_rpm = 6;
-static int lg_thruster_mode = 0; //0:single, 1:double, 2:quad
+static int lg_thruster_mode = 1; //0:single, 1:double, 2:quad
 
 #define PID_NUM 2
 static bool lg_emergency_mode = false;
@@ -341,23 +341,11 @@ void usvd_set_pwm_callback(USVD_PWM_CALLBACK callback, void *arg){
 	lg_pwm_callback_arg = arg;
 }
 
-void usvd_poll() {
-	//pthread_setname_np(pthread_self(), "DA PID");
+void usvd_poll(float north, float t_s) {
 
 	if (lg_lowlevel_control) {
 		return;
 	}
-
-	float north = 0;
-	float t_s = 0;
-	float quat[4] = { };
-
-	//TODO:
-	// MPU_T *mpu = lg_plugin_host->get_mpu();
-	// if (mpu) {
-	// 	north = mpu->get_north(mpu);
-	// 	quat = mpu->get_quaternion(mpu);
-	// }
 
 	//cal
 	//trancate min max
@@ -384,14 +372,10 @@ void usvd_poll() {
 	update_pwm();
 }
 
-static int command_handler(void *user_data, const char *_buff) {
-	char buff[256];
-	strncpy(buff, _buff, sizeof(buff));
-	char *cmd;
-	cmd = strtok(buff, " \n");
+int usvd_command(const char *cmd) {
 	if (cmd == NULL) {
 		//do nothing
-	} else if (strncmp(cmd, "set_thrust", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_thrust") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float v1, v2, v3, v4;
@@ -410,10 +394,10 @@ static int command_handler(void *user_data, const char *_buff) {
 				lg_pid_enabled = (v4 != 0);
 			}
 			if (lg_debugdump) {
-				printf("%s : completed\n", buff);
+				printf("%s : completed\n", cmd);
 			}
 		}
-	} else if (strncmp(cmd, "set_thruster_mode", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_thruster_mode") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float v;
@@ -424,7 +408,7 @@ static int command_handler(void *user_data, const char *_buff) {
 			}
 			printf("set_thruster_mode : completed\n");
 		}
-	} else if (strncmp(cmd, "set_light_strength", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_light_strength") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float v;
@@ -435,7 +419,7 @@ static int command_handler(void *user_data, const char *_buff) {
 			}
 			printf("set_light_strength : completed\n");
 		}
-	} else if (strncmp(cmd, "set_lowlevel_control", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_lowlevel_control") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float value;
@@ -444,7 +428,7 @@ static int command_handler(void *user_data, const char *_buff) {
 			lg_lowlevel_control = (value != 0);
 			printf("set_lowlevel_control : completed\n");
 		}
-	} else if (strncmp(cmd, "set_emergency_mode", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_emergency_mode") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float value;
@@ -454,7 +438,7 @@ static int command_handler(void *user_data, const char *_buff) {
 
 			printf("set_emergency_mode : completed\n");
 		}
-	} else if (strncmp(cmd, "set_pid_enabled", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_pid_enabled") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float value;
@@ -468,7 +452,7 @@ static int command_handler(void *user_data, const char *_buff) {
 
 			printf("set_pid_enabled : completed\n");
 		}
-	} else if (strncmp(cmd, "set_heading_lock", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_heading_lock") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			float value;
@@ -478,7 +462,7 @@ static int command_handler(void *user_data, const char *_buff) {
 
 			printf("set_heading_lock : completed\n");
 		}
-	} else if (strncmp(cmd, "set_light_value", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_light_value") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			int id = 0;
@@ -490,7 +474,7 @@ static int command_handler(void *user_data, const char *_buff) {
 			sscanf(param, "%f", &value);
 			printf("set_light_value : completed\n");
 		}
-	} else if (strncmp(cmd, "set_motor_value", sizeof(buff)) == 0) {
+	} else if (strcmp(cmd, "set_motor_value") == 0) {
 		char *param = strtok(NULL, " \n");
 		if (param != NULL) {
 			int id = 0;
@@ -502,7 +486,7 @@ static int command_handler(void *user_data, const char *_buff) {
 			printf("set_motor_value : completed\n");
 		}
 	} else {
-		printf(":unknown command : %s\n", buff);
+		printf(":unknown command : %s\n", cmd);
 	}
 	return 0;
 }

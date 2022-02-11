@@ -18,59 +18,116 @@ do {                                                                       \
   }                                                                        \
 } while (0)
 
-static void on_set_param_callback(const char *pst_name, const char *param,
-		const char *value, void *arg) {
-	napi_threadsafe_function callback = (napi_threadsafe_function)arg;
-
-	string _value = value;
-	string src = "\"";
-	string dst = "\\\"";
-	string::size_type pos = 0;
-	while ((pos = _value.find(src, pos)) != string::npos) {
-		_value.replace(pos, src.length(), dst);
-		pos += dst.length();
+static napi_value napi_usvd_init(napi_env env,
+		napi_callback_info info) {
+	size_t argc = 1;
+	napi_value argv[1];
+	NAPI_CALL(env, napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+	if (argc != 1) {
+		return NULL;
 	}
 
-	size_t len = strlen(pst_name) + strlen(param) + _value.size() + 16;
-	char *msg = (char*) malloc(len);
-#ifdef WIN32
-	sprintf_s(msg, len, "[\"%s\",\"%s\",\"%s\"]", pst_name, param, _value.c_str());
-#else
-	sprintf(msg, "[\"%s\",\"%s\",\"%s\"]", pst_name, param, _value.c_str());
-#endif
-	//printf("on_set_param_callback1 : %p=%s\n", msg, msg);
+	napi_valuetype argument_type;
+	NAPI_CALL(env, napi_typeof(env, argv[0], &argument_type));
+	if (argument_type != napi_string) {
+		return NULL;
+	}
+
+	char config_json[1024] = { };
+	size_t copied;
+
+	NAPI_CALL(env,
+			napi_get_value_string_utf8(env, argv[0], config_json, sizeof(config_json),
+					&copied));
+
+	usvd_init(config_json);
+
+	return NULL;
+}
+
+typedef struct CALLBACK_DATA{
+	int ch;
+	float v_us;
+}CALLBACK_DATA;
+static void usvd_pwm_callback(int ch, float v_us, void *arg) {
+	napi_threadsafe_function callback = (napi_threadsafe_function)arg;
+
+	CALLBACK_DATA *data = new CALLBACK_DATA();
+	data->ch = ch;
+	data->v_us = v_us;
 
 	NAPI_CALL(env, napi_acquire_threadsafe_function(callback));
 	NAPI_CALL(env,
-			napi_call_threadsafe_function(callback, (void* )msg,
+			napi_call_threadsafe_function(callback, (void* )data,
 					napi_tsfn_blocking));
 
 	return;
 }
 
 extern "C" {
-static void js_on_set_param_callback(napi_env env, napi_value js_callback, void *_ctx,
-		void *_msg) {
-	char *msg = (char*) _msg;
-	//printf("on_set_param_callback2 : %p=%s\n", _msg, msg);
+static void js_usvd_pwm_callback(napi_env env, napi_value js_callback, void *_ctx,
+		void *_data) {
+	CALLBACK_DATA *data = (CALLBACK_DATA*) _data;
 
-	napi_value nv_msg;
-	NAPI_CALL(env, napi_create_string_utf8(env, msg, -1, &nv_msg));
+	napi_value nv_ch;
+	NAPI_CALL(env, napi_create_int64(env, data->ch, &nv_ch));
 
-	napi_value argv[] = { nv_msg };
+	napi_value nv_v_us;
+	NAPI_CALL(env, napi_create_double(env, data->v_us, &nv_v_us));
+
+	napi_value argv[] = { nv_ch, nv_v_us };
 	napi_value undefined;
 	napi_value ret;
 	NAPI_CALL(env, napi_get_undefined(env, &undefined));
-	napi_status status = napi_call_function(env, undefined, js_callback, 1, argv, &ret);
+	napi_status status = napi_call_function(env, undefined, js_callback, 2, argv, &ret);
 	if (status != napi_ok) {
-		//printf("something wrong %d : ", status);
+		printf("something wrong %d : ", status);
 	}
 
-	free(msg);
+	delete data;
 }
 }
 
-static napi_value napi_pstcore_add_set_param_done_callback(napi_env env,
+static napi_value napi_usvd_set_pwm_callback(napi_env env,
+		napi_callback_info info) {
+	size_t argc = 1;
+	napi_value argv[1];
+	NAPI_CALL(env, napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+	if (argc != 1) {
+		return NULL;
+	}
+
+	napi_valuetype argument_type;
+	NAPI_CALL(env, napi_typeof(env, argv[0], &argument_type));
+	if (argument_type != napi_function) {
+		return NULL;
+	}
+
+	napi_value resource_name;
+	NAPI_CALL(env,
+			napi_create_string_utf8(env, "usvd", NAPI_AUTO_LENGTH,
+					&resource_name));
+
+	napi_threadsafe_function callback = NULL;
+	NAPI_CALL(env, //
+			napi_create_threadsafe_function(env, argv[0],//func
+			NULL,//async_resource
+			resource_name,//async_resource_name
+			0,//max_queue_size
+			2,//initial_thread_count
+			NULL,//thread_finalize_data
+			NULL,//thread_finalize_cb
+			(void*)0x0,//context
+			js_usvd_pwm_callback,//call_js_cb
+			&callback//result
+			));
+
+	usvd_set_pwm_callback(usvd_pwm_callback, callback);
+
+	return NULL;
+}
+
+static napi_value napi_usvd_poll(napi_env env,
 		napi_callback_info info) {
 	size_t argc = 2;
 	napi_value argv[2];
@@ -85,41 +142,48 @@ static napi_value napi_pstcore_add_set_param_done_callback(napi_env env,
 		return NULL;
 	}
 	NAPI_CALL(env, napi_typeof(env, argv[1], &argument_type));
-	if (argument_type != napi_function) {
+	if (argument_type != napi_number) {
 		return NULL;
 	}
+	
+	double north;
+	NAPI_CALL(env, napi_get_value_double(env, argv[0], &north));
 
-	int64_t ptr;
-	NAPI_CALL(env, napi_get_value_int64(env, argv[0], &ptr));
+	double t_s;
+	NAPI_CALL(env, napi_get_value_double(env, argv[1], &t_s));
 
-	napi_value resource_name;
-	NAPI_CALL(env,
-			napi_create_string_utf8(env, "pstcore", NAPI_AUTO_LENGTH,
-					&resource_name));
-
-	napi_threadsafe_function callback = NULL;
-	NAPI_CALL(env, //
-			napi_create_threadsafe_function(env, argv[1],//func
-			NULL,//async_resource
-			resource_name,//async_resource_name
-			0,//max_queue_size
-			2,//initial_thread_count
-			NULL,//thread_finalize_data
-			NULL,//thread_finalize_cb
-			(void*)0x0,//context
-			js_on_set_param_callback,//call_js_cb
-			&callback//result
-			));
+	usvd_poll(north, t_s);
 
 	return NULL;
 }
 
-static napi_value napi_pstcore_poll_events(napi_env env,
+static napi_value napi_usvd_command(napi_env env,
 		napi_callback_info info) {
+	size_t argc = 1;
+	napi_value argv[1];
+	NAPI_CALL(env, napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
+	if (argc != 1) {
+		return NULL;
+	}
 
-	//poling
+	napi_valuetype argument_type;
+	NAPI_CALL(env, napi_typeof(env, argv[0], &argument_type));
+	if (argument_type != napi_string) {
+		return NULL;
+	}
 
-	return NULL;
+	char cmd[1024] = { };
+	size_t copied;
+
+	NAPI_CALL(env,
+			napi_get_value_string_utf8(env, argv[0], cmd, sizeof(cmd),
+					&copied));
+
+	int _ret = usvd_command(cmd);
+
+	napi_value ret;
+	napi_create_int64(env, (uint64_t) _ret, &ret);
+	return ret;
 }
 
 #define DECLARE_NAPI_METHOD(name, func)                                        \
@@ -128,10 +192,14 @@ static napi_value napi_pstcore_poll_events(napi_env env,
 static napi_value Init(napi_env env, napi_value exports) {
 	napi_status status;
 	napi_property_descriptor desc[] = {
-	DECLARE_NAPI_METHOD("pstcore_add_set_param_done_callback",
-			napi_pstcore_add_set_param_done_callback),
-	DECLARE_NAPI_METHOD("pstcore_poll_events",
-			napi_pstcore_poll_events), };
+	DECLARE_NAPI_METHOD("usvd_init",
+			napi_usvd_init),
+	DECLARE_NAPI_METHOD("usvd_set_pwm_callback",
+			napi_usvd_set_pwm_callback),
+	DECLARE_NAPI_METHOD("usvd_poll",
+			napi_usvd_poll),
+	DECLARE_NAPI_METHOD("usvd_command",
+			napi_usvd_command), };
 	status = napi_define_properties(env, exports,
 			sizeof(desc) / sizeof(desc[0]), desc);
 	assert(status == napi_ok);
