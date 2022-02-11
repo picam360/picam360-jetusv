@@ -18,33 +18,6 @@ do {                                                                       \
   }                                                                        \
 } while (0)
 
-static napi_value napi_usvd_init(napi_env env,
-		napi_callback_info info) {
-	size_t argc = 1;
-	napi_value argv[1];
-	NAPI_CALL(env, napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
-	if (argc != 1) {
-		return NULL;
-	}
-
-	napi_valuetype argument_type;
-	NAPI_CALL(env, napi_typeof(env, argv[0], &argument_type));
-	if (argument_type != napi_string) {
-		return NULL;
-	}
-
-	char config_json[1024] = { };
-	size_t copied;
-
-	NAPI_CALL(env,
-			napi_get_value_string_utf8(env, argv[0], config_json, sizeof(config_json),
-					&copied));
-
-	usvd_init(config_json);
-
-	return NULL;
-}
-
 typedef struct CALLBACK_DATA{
 	int ch;
 	float v_us;
@@ -88,20 +61,32 @@ static void js_usvd_pwm_callback(napi_env env, napi_value js_callback, void *_ct
 }
 }
 
-static napi_value napi_usvd_set_pwm_callback(napi_env env,
+static napi_value napi_usvd_init(napi_env env,
 		napi_callback_info info) {
-	size_t argc = 1;
-	napi_value argv[1];
+	size_t argc = 2;
+	napi_value argv[2];
 	NAPI_CALL(env, napi_get_cb_info(env, info, &argc, argv, NULL, NULL));
-	if (argc != 1) {
+	if (argc != 2) {
 		return NULL;
 	}
 
 	napi_valuetype argument_type;
 	NAPI_CALL(env, napi_typeof(env, argv[0], &argument_type));
+	if (argument_type != napi_string) {
+		return NULL;
+	}
+
+	NAPI_CALL(env, napi_typeof(env, argv[1], &argument_type));
 	if (argument_type != napi_function) {
 		return NULL;
 	}
+
+	char config_json[1024] = { };
+	size_t copied;
+
+	NAPI_CALL(env,
+			napi_get_value_string_utf8(env, argv[0], config_json, sizeof(config_json),
+					&copied));
 
 	napi_value resource_name;
 	NAPI_CALL(env,
@@ -110,7 +95,7 @@ static napi_value napi_usvd_set_pwm_callback(napi_env env,
 
 	napi_threadsafe_function callback = NULL;
 	NAPI_CALL(env, //
-			napi_create_threadsafe_function(env, argv[0],//func
+			napi_create_threadsafe_function(env, argv[1],//func
 			NULL,//async_resource
 			resource_name,//async_resource_name
 			0,//max_queue_size
@@ -122,7 +107,8 @@ static napi_value napi_usvd_set_pwm_callback(napi_env env,
 			&callback//result
 			));
 
-	usvd_set_pwm_callback(usvd_pwm_callback, callback);
+
+	usvd_init(config_json, usvd_pwm_callback, callback);
 
 	return NULL;
 }
@@ -145,14 +131,14 @@ static napi_value napi_usvd_poll(napi_env env,
 	if (argument_type != napi_number) {
 		return NULL;
 	}
-	
-	double north;
-	NAPI_CALL(env, napi_get_value_double(env, argv[0], &north));
 
 	double t_s;
-	NAPI_CALL(env, napi_get_value_double(env, argv[1], &t_s));
+	NAPI_CALL(env, napi_get_value_double(env, argv[0], &t_s));
+	
+	double north;
+	NAPI_CALL(env, napi_get_value_double(env, argv[1], &north));
 
-	usvd_poll(north, t_s);
+	usvd_poll(t_s, north);
 
 	return NULL;
 }
@@ -194,8 +180,6 @@ static napi_value Init(napi_env env, napi_value exports) {
 	napi_property_descriptor desc[] = {
 	DECLARE_NAPI_METHOD("usvd_init",
 			napi_usvd_init),
-	DECLARE_NAPI_METHOD("usvd_set_pwm_callback",
-			napi_usvd_set_pwm_callback),
 	DECLARE_NAPI_METHOD("usvd_poll",
 			napi_usvd_poll),
 	DECLARE_NAPI_METHOD("usvd_command",

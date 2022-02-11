@@ -1,6 +1,6 @@
 module.exports = {
 	create_plugin: function (plugin_host) {
-		console.log("create usv plugin");
+		console.log("create jetusv plugin");
 		var async = require('async');
 		var fs = require("fs");
 		var sprintf = require('sprintf-js').sprintf;
@@ -10,11 +10,13 @@ module.exports = {
 		var i2c_buf = require("i2c-bus");
 		var Pca9685Driver = require("pca9685").Pca9685Driver;
 		var Ads1x15 = require('node-ads1x15');
+		var usvd = require('./node-usvd');
 
-		var PLUGIN_NAME = "usvc";
+		var PLUGIN_NAME = "jetusv";
 		var DELIMITER = '\r\n';
 		var TIMEOUT_MS = 5000;
 		var ADS7828_ADDRESS = 0x48;
+		var START_TIME = Date.now();
 
 		var m_gps_valid = false;
 		var m_latitude = 0;
@@ -51,6 +53,8 @@ module.exports = {
 			thruster_mode: "SINGLE",
 			// auto
 			propo_enabled: false,
+			manual_enabled: true,
+			manual_pid_enabled: false,
 			operation_mode: "STANBY",
 			waypoints: [],
 			history: {
@@ -107,6 +111,7 @@ module.exports = {
 				low_gain_deg: options.low_gain_deg,
 				home: options.home,
 				operator_pos: m_operator_pos,
+				manual_pid_enabled: options.manual_pid_enabled,
 			};
 
 			return status;
@@ -114,7 +119,10 @@ module.exports = {
 
 		var set_thruster_pwm = function(idx, us){
 			//implement pwm block
-		}
+		};
+
+		var on_north_received = function(quat){
+		};
 
 		async.waterfall([
 			function (callback) {
@@ -140,7 +148,8 @@ module.exports = {
 									parseFloat(_split[4]),
 									parseFloat(_split[5])
 								];
-								console.log("dequeue " + quat);
+								m_north = quat[1] * 180;
+								on_north_received(m_north);
 							}
 						}
 						buff = [];
@@ -154,8 +163,8 @@ module.exports = {
 				//9axis sensor handler
 			},
 			function (callback) {
-				//thruster handler
-				console.log("init thruster handler");
+				//pwm handler
+				console.log("init pwm handler");
 				
 				var pwm_options = {
 					i2c: i2c_buf.openSync(1),
@@ -186,7 +195,7 @@ module.exports = {
 
 					callback(null);
 				});
-				//thruster handler
+				//pwm handler
 			},
 			function (callback) {
 				//adc handler
@@ -440,6 +449,91 @@ module.exports = {
 				//history handler
 			},
 			function (callback) {
+				//usvd handler
+				console.log("init usvd handler");
+				usvd.usvd_init("", (ch, us) => {
+					set_thruster_pwm(ch, us);
+					//console.log(ch, us);
+				});
+				on_north_received = function(north){
+					var t_ms = Date.now() - START_TIME;
+					usvd.usvd_poll(t_ms/1000, north);
+				};
+				// pwm output
+				function get_pwm_us(value_per, ch_options) {
+					var mid = (ch_options && ch_options.PWM_MIDDLE_US)
+						|| options.PWM_MIDDLE_US;
+					var min = (ch_options && ch_options.PWM_MIN_US)
+						|| options.PWM_MIN_US;
+					var max = (ch_options && ch_options.PWM_MAX_US)
+						|| options.PWM_MAX_US;
+					var inv = ch_options && ch_options.invert;
+					var value = (inv ? -1 : 1) * value_per
+						* (max - min) + mid;
+					return Math.max(min, Math.min(value, max));
+				}
+				function get_per_from_pwm(value_us, ch_options) {
+					var mid = (ch_options && ch_options.PWM_MIDDLE_US)
+						|| options.PWM_MIDDLE_US;
+					var min = (ch_options && ch_options.PWM_MIN_US)
+						|| options.PWM_MIN_US;
+					var max = (ch_options && ch_options.PWM_MAX_US)
+						|| options.PWM_MAX_US;
+					var inv = ch_options && ch_options.invert;
+					var value = (inv ? -1 : 1) * (value_us - mid)
+						/ (max - min) * 100;
+					return Math.max(-100, Math.min(value, 100));
+				}
+				setInterval(function () {
+					if (options.operation_mode == "MANUAL"||
+						options.operation_mode == "EMERGENCY") {
+						if (options.propo_enabled && 1500 < m_ch_us[3]
+							&& m_ch_us[3] < 2000) {
+							m_thruster = get_per_from_pwm(m_ch_us[2], options.propo[2]);
+						} else if (options.manual_enabled) {
+							m_thruster = m_manual_thruster;
+							m_target_heading = m_manual_target_heading;
+							if (options.manual_debug) {
+								console.log("manual : rud "
+									+ m_manual_rudder + " : thr "
+									+ m_manual_thruster);
+							}
+						} else {
+							m_thruster = 0;
+						}
+					}
+					switch (options.operation_mode) {
+						case "WAYPOINT" :
+						case "HOME" :
+						case "FOLLOW" : {
+							var cmd = "set_thrust "
+								+ m_thruster + "," + m_rudder + ","
+								+ m_target_heading + ","
+								+ (m_pid_enabled ? 1 : 0);
+							usvd.usvd_command(cmd);
+							break;
+						}
+						case "MANUAL" :
+						case "EMERGENCY" : {
+							var cmd = "set_thrust "
+								+ m_thruster + "," + m_rudder + ","
+								+ m_target_heading + ","
+								+ (options.manual_pid_enabled ? 1 : 0);
+							usvd.usvd_command(cmd);
+							//console.log(cmd);
+							break;
+						}
+						case "STANBY" :
+						default : {
+							usvd.usvd_command("set_thrust 0,0,0,0");
+							break;
+						}
+					}
+				}, 200);
+				callback(null);
+				//usvd handler
+			},
+			function (callback) {
 				// auto operation
 				var waypoint_data = null;
 				setInterval(function () {
@@ -602,6 +696,7 @@ module.exports = {
 					}
 				}, 200);
 				callback(null);
+				// auto operation
 			}], function (err, result) {
 			});//end of async
 		var plugin = {
@@ -681,7 +776,7 @@ module.exports = {
 						options.next_waypoint_idx = v;
 						break;
 					case "set_operation_mode":
-						plugin_host.send_command("upstream.usv_driver.set_emergency_mode 0");
+						usvd.usvd_command("set_emergency_mode 0");
 						switch (split[1].toUpperCase()) {
 							case "WAYPOINT":
 								options.operation_mode = "WAYPOINT";
@@ -697,7 +792,7 @@ module.exports = {
 								break;
 							case "EMERGENCY":
 								options.operation_mode = "EMERGENCY";
-								plugin_host.send_command("upstream.usv_driver.set_emergency_mode 1");
+								usvd.usvd_command("set_emergency_mode 1");
 								break;
 							case "STANBY":
 							default:
@@ -712,8 +807,6 @@ module.exports = {
 							tol: parseFloat(split[3]),
 						};
 						break;
-					case "set_rudder":
-						break;
 					case "set_thruster":
 						var range = (options.PWM_MAX_US - options.PWM_MIN_US) / 2;
 						if (split.length > 1 && !isNaN(split[1])) {
@@ -721,13 +814,18 @@ module.exports = {
 								.min(parseFloat(split[1]), 100));
 						}
 						if (split.length > 2 && !isNaN(split[2])) {
-							m_manual_target_heading = m_target_heading
-								+ split[2] / 100 * 45;
-							if (m_manual_target_heading < -180) {
-								m_manual_target_heading += 2 * 180;
-							}
-							if (m_manual_target_heading > 180) {
-								m_manual_target_heading -= 2 * 180;
+							if(options.manual_pid_enabled){
+								m_manual_target_heading = m_target_heading
+									+ split[2] / 100 * 45;
+								if (m_manual_target_heading < -180) {
+									m_manual_target_heading += 2 * 180;
+								}
+								if (m_manual_target_heading > 180) {
+									m_manual_target_heading -= 2 * 180;
+								}
+							}else{
+								m_rudder = Math.max(-100, Math
+									.min(parseFloat(split[2]), 100));
 							}
 						}
 						break;

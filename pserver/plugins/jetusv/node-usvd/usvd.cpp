@@ -212,10 +212,8 @@ static void pid_control_single(float t_s, float north) {
 }
 static void pid_control_double(float t_s, float north) {
 	if (!lg_pid_enabled) {
-		float gain = 2.0;
-		float rudder = lg_target_heading / 180;
-		float value_r = lg_thrust + gain*rudder / 2;
-		float value_l = lg_thrust - gain*rudder / 2;
+		float value_r = lg_thrust + lg_rudder / 2;
+		float value_l = lg_thrust - lg_rudder / 2;
 		if (lg_emergency_mode) {
 			lg_motor_value[0] = 0;
 			lg_motor_value[1] = 0;
@@ -329,19 +327,16 @@ static void pid_control_quad(float t_s, float north) {
 	return;
 }
 
-void usvd_init(const char *config_json){
+void usvd_init(const char *config_json, USVD_PWM_CALLBACK callback, void *arg){
+	lg_pwm_callback = callback;
+	lg_pwm_callback_arg = arg;
 	{//init pwm
 		memset(lg_motor_value, 0, sizeof(lg_motor_value));
 		update_pwm();
 	}
 }
 
-void usvd_set_pwm_callback(USVD_PWM_CALLBACK callback, void *arg){
-	lg_pwm_callback = callback;
-	lg_pwm_callback_arg = arg;
-}
-
-void usvd_poll(float north, float t_s) {
+void usvd_poll(float t_s, float north) {
 
 	if (lg_lowlevel_control) {
 		return;
@@ -372,7 +367,11 @@ void usvd_poll(float north, float t_s) {
 	update_pwm();
 }
 
-int usvd_command(const char *cmd) {
+int usvd_command(const char *_buff) {
+	char buff[256];
+	strncpy(buff, _buff, sizeof(buff));
+	char *cmd;
+	cmd = strtok(buff, " \n");
 	if (cmd == NULL) {
 		//do nothing
 	} else if (strcmp(cmd, "set_thrust") == 0) {
@@ -384,7 +383,7 @@ int usvd_command(const char *cmd) {
 			if (num >= 1) {
 				lg_thrust = v1;
 			}
-			if (num >= 2 && !lg_heading_lock) {
+			if (num >= 2) {
 				lg_rudder = v2;
 			}
 			if (num >= 3) {

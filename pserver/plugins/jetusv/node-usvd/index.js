@@ -1,3 +1,3 @@
-var pstcore = require('bindings')('node-pstcore');
+var usvd = require('bindings')('node-usvd');
 
-module.exports = pstcore;
+module.exports = usvd;
