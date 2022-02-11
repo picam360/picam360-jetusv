@@ -14,9 +14,9 @@ var create_plugin = (function() {
 	var m_wp_mode;
 	var set_wp_mode = null;
 
-	var PLUGIN_NAME = "usv_agent";
+	var PLUGIN_NAME = "jetusv";
 	var SYSTEM_DOMAIN = UPSTREAM_DOMAIN + UPSTREAM_DOMAIN;
-	var SERVICE_DOMAIN = UPSTREAM_DOMAIN + "usvc.";
+	var SERVICE_DOMAIN = UPSTREAM_DOMAIN + "jetusv.";
 	var MOVE_TIMEOUT = 60 * 1000;// 1min
 
 	function button_svg(charactor, bgcolor) {
@@ -285,11 +285,16 @@ var create_plugin = (function() {
 			e) {
 			switch (e.type) {
 				case "axis" :
-					plugin.event_handler_act("SET_THRUSTER "
-						+ Math.ceil(e.y * 100) + " " + Math.ceil(e.dx * 100));
+					if(m_status.manual_pid_enabled){
+						plugin.event_handler_act("SET_THRUSTER "
+							+ Math.ceil(e.y * 100) + " " + Math.ceil(e.dx * 100));
+					}else{
+						plugin.event_handler_act("SET_THRUSTER "
+							+ Math.ceil(e.y * 100) + " " + Math.ceil(e.x * 100));
+					}
 					break;
 				case "up" :
-					plugin.event_handler_act("SET_THRUSTER 0");
+					plugin.event_handler_act("SET_THRUSTER 0 0");
 					break;
 			}
 		});
