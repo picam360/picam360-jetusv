@@ -49,7 +49,8 @@ module.exports = {
 		var m_target_heading = 0;
 		var m_operator_pos = {};
 
-		var options = {
+		var options;
+		var options_default = {
 			thruster_mode: "SINGLE",
 			// auto
 			propo_enabled: false,
@@ -76,6 +77,7 @@ module.exports = {
 			PWM_MAX_US: 1700,
 			PWM_MARGIN_MS: 100,
 			ch: [{}, {}, {}, {}],
+			icm_20948_ad0: false,
 		};
 
 		// aws_iot
@@ -126,10 +128,21 @@ module.exports = {
 
 		async.waterfall([
 			function (callback) {
+				var timer = setInterval(function () {
+					if(options){
+						clearInterval(timer);
+						callback(null);
+					}
+				}, 200);
+			},
+			function (callback) {
 				//9axis sensor handler
 				console.log("init 9axis handler");
 
-				var def = "dummy s=2x2 fps=10 ! icm20948 mode=yaw";
+				var def = "dummy s=2x2 fps=10 ! icm20948 mode=yaw deg_offset=\"0,0,90\" ";
+				if(options.icm_20948_ad0){
+					def += " ad0=1";
+				}
 				var pst = plugin_host.pstcore.pstcore_build_pstreamer(def);
 
                 var meta = "<meta maptype=\"DUMMY\" deg_offset=\"-90,0,0\" />";
@@ -142,14 +155,10 @@ module.exports = {
 						for (var i = 0; i < split.length; i++) {
 							var separator = (/[=,\"]/);
 							var _split = split[i].split(separator);
-							if (_split[0] == "vehicle_quat") {
-								var quat = [parseFloat(_split[2]),
-									parseFloat(_split[3]),
-									parseFloat(_split[4]),
-									parseFloat(_split[5])
-								];
-								m_north = quat[1] * 180;
+							if (_split[0] == "north") {
+								m_north = parseFloat(_split[2]);
 								on_north_received(m_north);
+								console.log(m_north);
 							}
 						}
 						buff = [];
@@ -705,7 +714,7 @@ module.exports = {
 			aws_client_id: null,
 			pst_params: {},
 			init_options: function (_options) {
-				options = Object.assign(options, _options.jetusv);
+				options = Object.assign(options_default, _options.jetusv);
 				options.waypoints = this.load_json("waypoints.json", []);
 				options.history = this.load_json("history.json", {
 					history_10000min: [],
