@@ -484,109 +484,24 @@ int usvd_command(const char *_buff) {
 			}
 			printf("set_motor_value : completed\n");
 		}
+	} else if (strcmp(cmd, "set_pid_gain") == 0) {
+		char *param = strtok(NULL, " \n");
+		if (param != NULL) {
+			float value[3] = {};
+			sscanf(param, "%f,%f,%f", &value[0], &value[1], &value[2]);
+			for (int k = 0; k < PID_NUM; k++) {
+				memcpy(lg_pid_gain[k], value, sizeof(lg_pid_gain));
+			}
+			memset(lg_pid_value, 0, sizeof(lg_pid_value));
+			memset(lg_delta_pid_target, 0, sizeof(lg_delta_pid_target));
+			printf("set_pid_gain : completed\n");
+			// for (int k = 0; k < PID_NUM; k++) {
+			// 		printf("%d=%f,%f,%f\n", k, lg_pid_gain[k][0], lg_pid_gain[k][1], lg_pid_gain[k][2]);
+			// }
+
+		}
 	} else {
 		printf(":unknown command : %s\n", cmd);
 	}
 	return 0;
 }
-
-// static void init_options(void *user_data, json_t *_options) {
-// 	PLUGIN_T *plugin = (PLUGIN_T*) user_data;
-// 	json_t *options = json_object_get(_options, PLUGIN_NAME);
-
-// 	{ //pid_gain
-// 		json_t *ary1 = json_object_get(options, "pid_gain");
-// 		if (json_is_array(ary1)) {
-// 			int size1 = json_array_size(ary1);
-// 			for (int i1 = 0; i1 < MIN(size1, PID_NUM); i1++) {
-// 				json_t *ary2 = json_array_get(ary1, i1);
-// 				if (json_is_array(ary2)) {
-// 					int size2 = json_array_size(ary2);
-// 					for (int i2 = 0; i2 < MIN(size2, 3); i2++) {
-// 						lg_pid_gain[i1][i2] = json_number_value(json_array_get(ary2, i2));
-// 					}
-// 				}
-// 			}
-// 		}
-// 	}
-
-// 	for (int i = 0; i < LIGHT_NUM; i++) {
-// 		char buff[256];
-// 		sprintf(buff, "light%d_id", i);
-// 		int id = (int) json_number_value(json_object_get(options, buff));
-// 		if (id != 0) {
-// 			lg_light_id[i] = id;
-// 		}
-// 	}
-
-// 	for (int i = 0; i < MOTOR_NUM; i++) {
-// 		char buff[256];
-// 		int value;
-// 		sprintf(buff, "motor%d_id", i);
-// 		value = (int) json_number_value(json_object_get(options, buff));
-// 		if (value != 0) {
-// 			lg_motor_id[i] = value;
-// 		}
-// 		sprintf(buff, "motor%d_dir", i);
-// 		value = (int) json_number_value(json_object_get(options, buff));
-// 		if (value != 0) {
-// 			lg_motor_dir[i] = value;
-// 		}
-// 	}
-// 	{
-// 		float value;
-// 		value = json_number_value(json_object_get(options, "motor_center"));
-// 		if (value != 0) {
-// 			lg_motor_center = value;
-// 		}
-// 		value = json_number_value(json_object_get(options, "motor_margin"));
-// 		if (value != 0) {
-// 			lg_motor_margin = value;
-// 		}
-// 		value = json_number_value(json_object_get(options, "motor_range"));
-// 		if (value != 0) {
-// 			lg_motor_range = value;
-// 		}
-// 	}
-// 	lg_thruster_mode = (int) json_number_value(json_object_get(options, "thruster_mode"));
-
-// 	init_pwm(); //need motor ids
-// }
-
-// static void save_options(void *user_data, json_t *_options) {
-// 	json_t *options = json_object();
-// 	json_object_set_new(_options, PLUGIN_NAME, options);
-
-// 	{ //pid_gain
-// 		json_t *ary1 = json_array();
-// 		for (int i1 = 0; i1 < PID_NUM; i1++) {
-// 			json_t *ary2 = json_array();
-// 			for (int i2 = 0; i2 < 3; i2++) {
-// 				json_array_append_new(ary2, json_real(lg_pid_gain[i1][i2]));
-// 			}
-// 			json_array_append_new(ary1, ary2);
-// 		}
-// 		json_object_set_new(options, "pid_gain", ary1);
-// 	}
-
-// 	for (int i = 0; i < LIGHT_NUM; i++) {
-// 		char buff[256];
-// 		sprintf(buff, "light%d_id", i);
-// 		json_object_set_new(options, buff, json_real(lg_light_id[i]));
-// 	}
-
-// 	for (int i = 0; i < MOTOR_NUM; i++) {
-// 		char buff[256];
-// 		sprintf(buff, "motor%d_id", i);
-// 		json_object_set_new(options, buff, json_real(lg_motor_id[i]));
-// 		sprintf(buff, "motor%d_dir", i);
-// 		json_object_set_new(options, buff, json_real(lg_motor_dir[i]));
-// 	}
-
-// 	{
-// 		json_object_set_new(options, "motor_center", json_real(lg_motor_center));
-// 		json_object_set_new(options, "motor_margin", json_real(lg_motor_margin));
-// 		json_object_set_new(options, "motor_range", json_real(lg_motor_range));
-// 	}
-// 	json_object_set_new(options, "thruster_mode", json_real(lg_thruster_mode));
-// }

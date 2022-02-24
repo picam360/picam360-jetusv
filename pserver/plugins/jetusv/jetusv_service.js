@@ -77,7 +77,6 @@ module.exports = {
 			PWM_MAX_US: 1700,
 			PWM_MARGIN_MS: 100,
 			ch: [{}, {}, {}, {}],
-			icm_20948_ad0: false,
 		};
 
 		// aws_iot
@@ -140,9 +139,6 @@ module.exports = {
 				console.log("init 9axis handler");
 
 				var def = "dummy s=2x2 fps=10 ! icm20948 mode=yaw deg_offset=\"0,0,90\" ";
-				if(options.icm_20948_ad0){
-					def += " ad0=1";
-				}
 				var pst = plugin_host.pstcore.pstcore_build_pstreamer(def);
 
                 var meta = "<meta maptype=\"DUMMY\" deg_offset=\"-90,0,0\" />";
@@ -158,7 +154,7 @@ module.exports = {
 							if (_split[0] == "north") {
 								m_north = parseFloat(_split[2]);
 								on_north_received(m_north);
-								console.log(m_north);
+								//console.log(m_north);
 							}
 						}
 						buff = [];
@@ -843,6 +839,9 @@ module.exports = {
 						break;
 					case "get_history":
 						m_history_required = true;
+						break;
+					case "set_pid_gain":
+						usvd.usvd_command(cmd);
 						break;
 				}
 			},

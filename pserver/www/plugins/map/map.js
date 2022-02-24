@@ -102,7 +102,7 @@ var create_plugin = (function() {
 		console.log(plugin.name + "::init()");
 
 		var script = document.createElement('script');
-		script.src = "http://localhost/openlayers-v5.1.3/ol.js";
+		script.src = "https://vpm.picam360.com/openlayers-v5.1.3/ol.js";
 		script.onload = function() {
 			m_plugin_host
 				.getFile("plugins/map/map.html", function(chunk_array) {
